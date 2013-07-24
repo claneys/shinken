@@ -25,9 +25,16 @@
 DIR="$(cd $(dirname "$0"); pwd)"
 echo "$DIR"
 
+# Prepare the launch by cleaning var/log directories
+. $DIR/preparedev
+
 cd "$DIR/.."
 
 export LANG=us_US.UTF-8
+# Protect against proxy variable for dev
+unset http_proxy
+unset https_proxy
+
 
 # Currently skonf is not stable, disabling it
 #"$DIR"/launch_skonf_debug.sh

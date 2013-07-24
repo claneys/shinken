@@ -70,6 +70,7 @@ from serviceextinfo import ServiceExtInfo, ServicesExtInfo
 from trigger import Trigger, Triggers
 from pack import Pack, Packs
 
+from shinken.util import split_semicolon
 from shinken.arbiterlink import ArbiterLink, ArbiterLinks
 from shinken.schedulerlink import SchedulerLink, SchedulerLinks
 from shinken.reactionnerlink import ReactionnerLink, ReactionnerLinks
@@ -102,9 +103,9 @@ class Config(Item):
     # *usage_text: if present, will print it to explain why it's no more useful
     properties = {
         'prefix':                   StringProp(default='/usr/local/shinken/'),
-        'workdir':                  StringProp(default=''),
+        'workdir':                  StringProp(default='/var/run/shinken/'),
         'config_base_dir':          StringProp(default=''), # will be set when we will load a file
-        'modulesdir':               StringProp(default='modules'),
+        'modulesdir':               StringProp(default='/var/lib/shinken/modules'),
         'use_local_log':            BoolProp(default='1'),
         'log_level':                LogLevelProp(default='WARNING'),
         'local_log':                StringProp(default='arbiterd.log'),
@@ -444,7 +445,6 @@ class Config(Item):
                         if self.read_config_silent == 0:
                             logger.info("Processing object config file '%s'" % cfg_file_name)
                         res.write(os.linesep + '# IMPORTEDFROM=%s' % (cfg_file_name) + os.linesep)
-                        print "FILE", cfg_file_name
                         res.write(fd.read().decode('utf8', 'replace'))
                         # Be sure to add a line return so we won't mix files
                         res.write('\n')
@@ -530,11 +530,10 @@ class Config(Item):
             if line.startswith("# IMPORTEDFROM="):
                 filefrom = line.split('=')[1]
                 continue
-            # Protect \; to be considered as comments
-            line = line.replace('\;', '__ANTI-VIRG__')
-            line = line.split(';')[0].strip()
-            # Now we removed real comments, replace them with just ;
-            line = line.replace('__ANTI-VIRG__', ';')
+
+            # Remove comments
+            line = split_semicolon(line)[0].strip()
+
             # A backslash means, there is more to come
             if re.search("\\\s*$", line) is not None:
                 continuation_line = True
