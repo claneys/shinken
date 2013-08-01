@@ -1,0 +1,13 @@
+{
+"name": "ibm-xseries",
+
+"description": "Standard checks about xSeries sensors (Fan, Temperature, Voltage, ...). Checks are done by IPMI.",
+
+"path":"/",
+
+"macros":{      "_IPMI_CONF": {"type":"absolute path",
+                                 "description": "absolute path to ipmi.conf file. Default: $PLUGINSDIR$/ipmi.conf"
+                             }
+        }
+}
+

@@ -46,6 +46,12 @@
          "_WINDOWS_REBOOT_CRIT": {"type":"string",
                              "description":"Uptime of the host"
                              },
+         "_WINDOWS_SWAP_WARN": {"type":"percent",
+                             "description":"Level for swap usage"
+                             },
+         "_WINDOWS_SWAP_CRIT": {"type":"percent",
+                             "description":"Level for swap usage"
+                             },
          "_WINDOWS_MEM_WARN": {"type":"percent",
                              "description":"Level for ram usage"
                              },
