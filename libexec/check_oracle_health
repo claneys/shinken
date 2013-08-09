@@ -5781,7 +5781,7 @@ $PROGNAME = "check_oracle_health";
 $REVISION = '$Revision: 1.7.3 $';
 $CONTACT = 'gerhard.lausser@consol.de';
 $TIMEOUT = 60;
-$STATEFILESDIR = '/usr/local/shinken/var/tmp';
+$STATEFILESDIR = '/var/lib/shinken';
 $needs_restart = 0;
 
 my @modes = (
