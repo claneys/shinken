@@ -2375,7 +2375,7 @@ function install_check_logfiles(){
     cd $folder
     cecho " > Build check_logfiles" green
     autoreconf >> ${LOGFILE} 2>&1
-    ./configure --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --prefix=$TARGET >> ${LOGFILE} 2>&1
+    ./configure --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --libexecdir=$LIBEXEC >> ${LOGFILE} 2>&1
     make >> ${LOGFILE} 2>&1
     cecho " > Install check_logfiles" green
     make install >> ${LOGFILE} 2>&1
@@ -2432,7 +2432,7 @@ function install_check_nwc_health(){
     cd $folder
     cecho " > Build check_nwc_health.pl" green
     autoreconf >> ${LOGFILE} 2>&1
-    ./configure --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --enable-perfdata --enable-extendedinfo --prefix=$TARGET >> ${LOGFILE} 2>&1
+    ./configure --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --enable-perfdata --enable-extendedinfo --libexecdir=$LIBEXEC >> ${LOGFILE} 2>&1
     make >> ${LOGFILE} 2>&1
     cecho " > Install check_nwc_health.pl" green
     make install >> ${LOGFILE} 2>&1
@@ -2612,7 +2612,7 @@ function install_nagios-plugins(){
     cecho " > Patching nagios-plugins" green
     patch -p0 < "$myscripts"/install.d/nagios-plugins-gets-patch.patch >> ${LOGFILE} 2>&1
     cecho " > Configure source tree" green
-    ./configure --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --enable-libtap --enable-extra-opts --prefix=$TARGET --enable-perl-modules >> ${LOGFILE} 2>&1
+    ./configure --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --enable-libtap --enable-extra-opts --libexecdir=$LIBEXEC --enable-perl-modules >> ${LOGFILE} 2>&1
     cecho " > Building ...." green
     make >> ${LOGFILE} >> ${LOGFILE}  2>&1
     cecho " > Installing" green
@@ -2799,7 +2799,7 @@ function install_check_oracle_health(){
     filename=$(echo $CHECKORACLEHEALTH | awk -F"/" '{print $NF}')
     tar zxvf $filename >> ${LOGFILE} 2>&1
     cd $(echo $filename | sed -e "s/\.tar\.gz//g")
-    ./configure --prefix=$TARGET --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --with-mymodules-dir=$LIBEXEC --with-mymodules-dyn-dir=$LIBEXEC --with-statefiles-dir=$TARGET/var$TMP >> ${LOGFILE} 2>&1
+    ./configure --libexecdir=$LIBEXEC --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --with-mymodules-dir=$LIBEXEC --with-mymodules-dyn-dir=$LIBEXEC --with-statefiles-dir=/var/tmp/shinken >> ${LOGFILE} 2>&1
     cecho " > Building plugin" green
     make >> ${LOGFILE} 2>&1
     if [ $? -ne 0 ]
@@ -2878,7 +2878,7 @@ function install_check_db2_health(){
     filename=$(echo $CHECKDB2HEALTH | awk -F"/" '{print $NF}')
     tar zxvf $filename >> ${LOGFILE} 2>&1
     cd $(echo $filename | sed -e "s/\.tar\.gz//g")
-    ./configure --prefix=$TARGET --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --with-mymodules-dir=$LIBEXEC --with-mymodules-dyn-dir=$LIBEXEC --with-statefiles-dir=$TARGET/var$TMP >> ${LOGFILE} 2>&1
+    ./configure --libexecdir=$LIBEXEC --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --with-mymodules-dir=$LIBEXEC --with-mymodules-dyn-dir=$LIBEXEC --with-statefiles-dir=/var/tmp/shinken >> ${LOGFILE} 2>&1
     cecho " > Building plugin" green
     make >> ${LOGFILE} 2>&1
     if [ $? -ne 0 ]
@@ -2979,7 +2979,7 @@ function install_check_mysql_health(){
     filename=$(echo $CHECKMYSQLHEALTH | awk -F"/" '{print $NF}')
     tar zxvf $filename >> ${LOGFILE} 2>&1
     cd $(echo $filename | sed -e "s/\.tar\.gz//g")
-    ./configure --prefix=$TARGET --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --with-mymodules-dir=$LIBEXEC --with-mymodules-dyn-dir=$LIBEXEC --with-statefiles-dir=$TARGET/var$TMP >> ${LOGFILE} 2>&1
+    ./configure --libexecdir=$LIBEXEC --with-nagios-user=$SKUSER --with-nagios-group=$SKGROUP --with-mymodules-dir=$LIBEXEC --with-mymodules-dyn-dir=$LIBEXEC --with-statefiles-dir=/var/tmp/shinken >> ${LOGFILE} 2>&1
     cecho " > Building plugin" green
     make >> ${LOGFILE} 2>&1
     if [ $? -ne 0 ]
