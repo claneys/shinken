@@ -114,13 +114,13 @@ class Service(SchedulingItem):
 
         # Shinken specific
         'poller_tag':              StringProp(default='None'),
-        'reactionner_tag':              StringProp(default='None'),
+        'reactionner_tag':         StringProp(default='None'),
         'resultmodulations':       StringProp(default=''),
         'business_impact_modulations':    StringProp(default=''),
         'escalations':             StringProp(default='', fill_brok=['full_status']),
         'maintenance_period':      StringProp(default='', brok_transformation=to_name_if_possible, fill_brok=['full_status']),
-        'time_to_orphanage':      IntegerProp(default="300", fill_brok=['full_status']),
-	'merge_host_contacts': 	   BoolProp(default='0', fill_brok=['full_status']),
+        'time_to_orphanage':       IntegerProp(default="300", fill_brok=['full_status']),
+        'merge_host_contacts': 	   BoolProp(default='0', fill_brok=['full_status']),
 
         # Easy Service dep definition
         'service_dependencies':   ListProp(default=''), # TODO: find a way to brok it?
@@ -252,6 +252,9 @@ class Service(SchedulingItem):
         'got_business_rule': BoolProp(default=False, fill_brok=['full_status']),
         # Our Dependency node for the business rule
         'business_rule': StringProp(default=None),
+        # Business rules output format template
+        'business_rule_output_template': StringProp(default='', fill_brok=['full_status']),
+
 
         # Here it's the elements we are depending on
         # so our parents as network relation, or a host
@@ -584,7 +587,6 @@ class Service(SchedulingItem):
 #                                  __/ |
 #                                 |___/
 ####
-
 
     # Set unreachable: our host is DOWN, but it mean nothing for a service
     def set_unreachable(self):
@@ -1026,7 +1028,7 @@ class Services(Items):
         self.linkify_with_triggers(triggers)
         self.linkify_with_checkmodulations(checkmodulations)
         self.linkify_with_macromodulations(macromodulations)
-        
+
 
     # We can link services with hosts so
     # We can search in O(hosts) instead
@@ -1104,18 +1106,6 @@ class Services(Items):
                         h = hosts.find_by_name(s.host_name)
                         if h is not None and hasattr(h, prop):
                             setattr(s, prop, getattr(h, prop))
-                # For some of theses attribute we not just want to
-                # have implicite inheritance but also should try
-                # to merge with the host attribute.
-                # But only if it is explicitly wanted.
-                if getattr(s, 'merge_host_contacts', '0') == '1':
-                    if prop in ('contact_groups', 'contacts') and hasattr(s, 'host_name'):
-                        h = hosts.find_by_name(s.host_name)
-                        if h is not None and hasattr(h, prop):
-                            l = getattr(s, prop, '').lstrip('+').split(',') + getattr(h, prop, '').lstrip('+').split(',')
-                            # Filter empty and doubled values
-                            attribute_list = set([x for x in l if len(x) >= 1])
-                            setattr(s, prop, ','.join(attribute_list))
 
     # Apply inheritance for all properties
     def apply_inheritance(self, hosts):
