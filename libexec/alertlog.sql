@@ -13,7 +13,7 @@ BEGIN
   EXECUTE IMMEDIATE 'CREATE OR REPLACE DIRECTORY bdump_dir AS '''||BDumpDir||'''';
   -- grant the necessary privileges
   EXECUTE IMMEDIATE 'GRANT READ ON DIRECTORY bdump_dir TO system';
-  EXECUTE IMMEDIATE 'GRANT READ ON DIRECTORY bdump_dir TO nagios';
+  EXECUTE IMMEDIATE 'GRANT READ ON DIRECTORY bdump_dir TO admys';
   -- get the SID
   SELECT instance_name INTO SID FROM v$instance;
   -- create the external table
@@ -31,7 +31,7 @@ BEGIN
      LOCATION (''alert_'||SID||'.log'')
     )
     REJECT LIMIT UNLIMITED';
-    EXECUTE IMMEDIATE 'GRANT SELECT ON system.alert_log_external TO nagios';
+    EXECUTE IMMEDIATE 'GRANT SELECT ON system.alert_log_external TO admys';
 -- ignore ORA-955 errors (object already exists)
 EXCEPTION WHEN ObjectExists THEN NULL;
 END;
@@ -91,7 +91,7 @@ EXCEPTION WHEN ObjectExists THEN
   EXECUTE IMMEDIATE 'DROP PUBLIC SYNONYM alert_log';
   EXECUTE IMMEDIATE
       'CREATE PUBLIC SYNONYM alert_log FOR system.alert_log';
-  EXECUTE IMMEDIATE 'GRANT SELECT ON alert_log TO nagios';
+  EXECUTE IMMEDIATE 'GRANT SELECT ON alert_log TO admys';
 END;
 /
 
