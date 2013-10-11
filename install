@@ -248,15 +248,16 @@ function setdirectives(){
     mpath=$3
 
     cecho "    > Going to $mpath" green
-    cd $mpath
+    pushd $mpath >> ${LOGFILE} 2>&1
 
     for pair in $directives
     do
         directive=$(echo $pair | awk -F= '{print $1}')
         value=$(echo $pair | awk -F= '{print $2}')
         cecho "       > Setting $directive to $value in $fic" green
-        sed -i 's#^\# \?'$directive'=\(.*\)$#'$directive'='$value'#g' $ETC/$(basename $fic)
+        sed -i 's#^\# \?'$directive'=\(.*\)$#'$directive'='$value'#g' $fic
     done
+    popd >> ${LOGFILE} 2>&1
 }
 
 ##############################
@@ -312,7 +313,8 @@ function installpkg(){
 
     if [ "$type" == "python" ]
     then
-        PYEI="easy_install"
+        PVER=$(pythonvershort)
+        PYEI="easy_install-$PVER"
         $PYEI $package >> ${LOGFILE} 2>&1
         return $?
     elif [ "$type" = "pkg" ]
@@ -436,7 +438,8 @@ function prerequisites(){
     fi
     # python prereq
     export PY="python"
-    export PYEI="easy_install"
+    PVER=$(pythonvershort)
+    PYEI="easy_install-$PVER"
     if [ "$CODE" = "REDHAT" ]
     then
          PYLIBS=$PYLIBSRHEL6
@@ -453,8 +456,8 @@ function prerequisites(){
     fi
 
     # this is a fix for MySQL-python complainig about outdated version of distribute
-    cecho " > Installing distribute" green
-    easy_install -U distribute >> ${LOGFILE} 2>&1
+    #cecho " > Installing distribute" green
+    #$PYEI -U distribute >> ${LOGFILE} 2>&1
 
     for p in $PYLIBS
     do
@@ -484,7 +487,7 @@ function prerequisites(){
     if [ $MANAGEPYRO == 1 ]
     then
         cecho " > Installing managed python (experimental) " green
-        easy_install pip
+        $PYEI pip
         yes | pip uninstall Pyro
         yes | pip uninstall Pyro4
         pyroset
@@ -696,17 +699,27 @@ function relocate(){
     # set some directives
     cadre "Set some configuration directives" green
     directives="workdir=$TARGET/var user=$SKUSER shinken_user=$SKUSER group=$SKGROUP shinken_group=$SKGROUP"
-    for fic in $(ls -1 $ETC/*.ini $ETC/skonf.cfg)
+    for fic in $(ls -1 $ETC/daemons/*.ini $ETC/skonf.cfg)
     do
         cecho " > Processing $fic" green;
-        setdirectives "$directives" $fic $TARGET
+        setdirectives "$directives" $fic $ETC/daemons 
     done
-    directives="workdir=$TARGET/var shinken_user=$SKUSER shinken_group=$SKGROUP local_log=$TARGET/var/arbiter.log lock_file=$TARGET/var/arbiter.pid"
-    for fic in $(ls -1 $ETC/nagios*cfg)
+    daemons="arbiters schedulers brokers reactionners receivers pollers modules"
+    for element in $dameons
     do
-        cecho " > Processing $fic" green;
-        setdirectives "$directives" $fic $TARGET
+        cecho "  > processing $element" green
+        files=$(ls -1 *.cfg)
+        for file in $files
+        do
+            cecho "    > processing $file" green
+        done
     done
+    #directives="workdir=$TARGET/var shinken_user=$SKUSER shinken_group=$SKGROUP local_log=$TARGET/var/arbiter.log lock_file=$TARGET/var/arbiter.pid"
+    #for fic in $(ls -1 $ETC/nagios*cfg)
+    #do
+    #    cecho " > Processing $fic" green;
+    #    setdirectives "$directives" $fic $TARGET
+    #done
     # relocate default file
     cd $TARGET/bin/default
     cat $TARGET/bin/default/shinken.in | sed  -e 's#LOG\=\(.*\)$#LOG='$TARGET'/var#g' -e 's#RUN\=\(.*\)$#RUN='$TARGET'/var#g' -e  's#ETC\=\(.*\)$#ETC='$ETC'#g' -e  's#VAR\=\(.*\)$#VAR='$TARGET'/var#g' -e  's#BIN\=\(.*\)$#BIN='$TARGET'/bin#g' > $TARGET/bin/default/shinken
