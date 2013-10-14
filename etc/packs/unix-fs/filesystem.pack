@@ -3,7 +3,7 @@
 
 "description":"filesystem is made to hold checks about detected filesystems",
 
-"path":"/unix-fs",
+"path":"/sydel",
 
 "macros":{ }
 
