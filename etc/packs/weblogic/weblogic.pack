@@ -1,0 +1,10 @@
+{
+"name": "weblogic",
+
+"description": "Standard Weblogic checks. Checks are done by HTTP testing response about default ports.",
+
+"path":"/",
+
+"macros":{        }
+}
+
