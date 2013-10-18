@@ -126,6 +126,7 @@ class Host(SchedulingItem):
         'maintenance_period':   StringProp(default='', brok_transformation=to_name_if_possible, fill_brok=['full_status']),
         'time_to_orphanage':    IntegerProp(default='300', fill_brok=['full_status']),
         'service_overrides':    ListProp(default=''),
+        'labels':               ListProp(default='', fill_brok=['full_status']),
 
         # BUSINESS CORRELATOR PART
         # Business rules output format template
@@ -289,6 +290,8 @@ class Host(SchedulingItem):
         # BUSINESS CORRELATOR PART
         # Say if we are business based rule or not
         'got_business_rule': BoolProp(default=False, fill_brok=['full_status']),
+        # Previously processed business rule (with macro expanded)
+        'processed_business_rule': StringProp(default="", fill_brok=['full_status']),
         # Our Dependency node for the business rule
         'business_rule': StringProp(default=None),
 
