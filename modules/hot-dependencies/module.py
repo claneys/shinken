@@ -202,17 +202,19 @@ class Hot_dependencies_arbiter(BaseModule):
                 else:
                     logger.debug("[Hot dependencies] Missing one of %s %s" % (son_name, father_name))
 # TODO : Define service dependency part
-#            elif son_type == 'service' and father_type == 'service':
-#                son = arb.conf.hosts.find_by_name(son_name)
-#                father = arb.conf.hosts.find_by_name(father_name)
-#                if son is not None and father is not None:
-#                    logger.debug("[Hot dependencies] Found! %s %s" % (son_name, father_name))
-#                    if not son.is_linked_with_host(father):
-#                        logger.debug("[Hot dependencies] Doing simple link between %s and %s" % (son.get_name(), father.get_name()))
-#                        # Add a dep link between the son and the father
-#                        son.add_host_act_dependency(father, ['w', 'u', 'd'], None, True)
-#                else:
-#                    logger.debug("[Hot dependencies] Missing one of %s %s" % (son_name, father_name))
+            elif son_type == 'service' and father_type == 'service':
+                son = son_name.split(',')
+                father = father_name.split(',')
+                son_svc = arb.conf.services.find_srv_by_name_and_hostname(son[0], son[1])
+                father_svc = arb.conf.services.find_srv_by_name_and_hostname(father[0], father[1])
+                if son_svc is not None and father_svc is not None:
+                    logger.debug("[Hot dependencies] Found! Service %s and %s" % (son_name, father_name))
+                    if not son_svc.is_linked_with_service(father_svc):
+                        logger.debug("[Hot dependencies] Doing simple link between %s and %s" % (son_svc.get_name(), father_svc.get_name()))
+                        # Add a dep link between the son and the father
+                        son_svc.add_service_act_dependency(father_svc, ['w', 'c', 'u'], None, True)
+                else:
+                    logger.debug("[Hot dependencies] Missing one of %s %s" % (son_name, father_name))
 
     def hook_tick(self, arb):
         now = int(time.time())
