@@ -7,8 +7,10 @@
 # Licence : GPL - http://www.fsf.org/licenses/gpl.txt
 #################################################################
 #
-# Help : ./check_SydelUnivers
+# Help : ./check_SydelUnivers -c <connect_string> -u <database_username> -p <database_username_password> -w <warning threshold>
 #
+# This plugin check alarms triggered for a specific user and return them. There are no critical threshold since SU handle 
+# that state.
 
 import os, re
 
@@ -20,19 +22,24 @@ import cx_Oracle
 from subprocess import Popen, PIPE
 from optparse import OptionParser
 
+OK = 0
+WARNING = 1
+CRITICAL = 2
+UNKNOWN = 3
+
 
 VERSION = '0.9'
 
 class check_SydelUnivers:
 
-    def __init__(self, connect, username, password):
+    def __init__(self, connect, username, password, warning=1):
         self.connect = connect
         self.username = username
         self.password = password
-        self.get_alarmes_request = 'SELECT a.COD_ALA, a.LIB_ALA, a.NIV_ALA, h.DAT_CREA_ALA FROM devdbsud.SU_ALA a, devdbsud.SU_ALA_HIS h WHERE a.cod_ala=h.cod_ala and h.etat_ala != \'TERM\' and instr(a.lst_ope,\';SYDEL;\')>0 order by dat_crea_ala'
+        self.get_alarms_request = 'SELECT a.COD_ALA, a.LIB_ALA, a.NIV_ALA, h.DAT_CREA_ALA FROM devdbsud.SU_ALA a, devdbsud.SU_ALA_HIS h WHERE a.cod_ala=h.cod_ala and h.etat_ala != \'TERM\' and instr(a.lst_ope,\';SYDEL;\')>0 order by dat_crea_ala'
         # Thresholds. We don't have critical threshold since
         # SU handled criticity.
-        self.warn = 1
+        self.warn = warning
 
     def do_connect(self, method="cx_Oracle"):
         '''
@@ -63,51 +70,52 @@ class check_SydelUnivers:
             except (OSError, ValueError) as err:
                 sys.exit("Connection got a problem : %s" % err.strerror)
     
-    def get_alarmes(self, session):
+    def get_alarms(self, session):
         '''
-        Get Sydel Univers alarmes relatives to user provided in argument
+        Get Sydel Univers alarms relatives to user provided in argument
         session : session object connected to the database.
         '''
 
         cursor = session.cursor()
-        cursor.execute(self.get_alarmes_request)
+        cursor.execute(self.get_alarms_request)
 
-        alarmes = cursor.fetchall()
+        alarms = cursor.fetchall()
 
-        return alarmes
+        return alarms
 
-    def process_alarmes(self, alarmes):
+    def process_alarms(self, alarms):
         '''
-        Search for critical alarmes, then format them for 
+        Search for critical alarms, then format ouput for 
         Shinken/nagios.
-        alarmes : list of tuples of alarmes.
+        alarms : list of tuples of alarms.
         '''
 
-        nb_alarmes = len(alarmes)
+        nb_alarms = len(alarms)
         is_critical = False
 
-        exit_code = 0
-        output = "We got %d alarme(s)" % nb_alarmes
-        perfdata = "| Alarmes_SU=%d;%d;;;" % (nb_alarmes, self.warn)
+        exit_code = OK
+        output = "You got %d alarm(s)" % nb_alarms
+        perfdata = "| Alarmes_SU=%d;%d;;; " % (nb_alarms, self.warn)
         long_output = ""
 
-        if nb_alarmes == 0:
+        if nb_alarms == 0:
             return ("OK"+output+perfdata, exit_code)
 
-        for alarme in alarmes:
-            if alarme[2] == 1:
-                exit_code = 2
-                long_output += "CRITICAL: " + alarme[1] + " since " + str(alarme[3].date()) + " at " + str(alarme[3].time())
+        for alarm in alarms:
+            if alarm[2] == 1:
+                exit_code = CRITICAL
+                long_output += "CRITICAL: " + alarm[1] + " since " + str(alarm[3].date()) + " at " + str(alarm[3].time()) + "\n"
             else:
-                exit_code = 1
-                long_output += "WARNING: " + alarme[1] + " since " + str(alarme[3].date()) + " at " + str(alarme[3].time())
+                if exit_code != CRITICAL:
+                    exit_code = WARNING
+                long_output += "WARNING: " + alarm[1] + " since " + str(alarm[3].date()) + " at " + str(alarm[3].time()) + "\n"
 
         return (output+perfdata+long_output, exit_code)
 
     def main(self):
         session = self.do_connect()
-        alarmes = self.get_alarmes(session)
-        check_results = self.process_alarmes(alarmes)
+        alarms = self.get_alarms(session)
+        check_results = self.process_alarms(alarms)
 
         print check_results[0]
         exit(check_results[1])
@@ -117,6 +125,7 @@ if __name__ == "__main__":
     parser.add_option('-c', '--connect', dest='connect', help='Connect string to Sydel Univers Oracle Database. See your tnsnames.ora')
     parser.add_option('-u', '--username', dest='username', help='Oracle user to connect at database')
     parser.add_option('-p', '--password', dest='password', help='Oracle password')
+    parser.add_option('-w', '--warning', dest='warning', type=int, help='Warning threshold triggered if there are more than this threshold. Default: 1')
 
     opts, args = parser.parse_args()
 
