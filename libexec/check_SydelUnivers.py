@@ -10,7 +10,13 @@
 # Help : ./check_SydelUnivers
 #
 
-import os
+import os, re
+
+# You'll need to install this module : easy_install cx_Oracle
+# Prior to be able to install it, you must install python-devel package
+# relative to your GNU/linux distro
+import cx_Oracle
+
 from subprocess import Popen, PIPE
 from optparse import OptionParser
 
@@ -23,8 +29,12 @@ class check_SydelUnivers:
         self.connect = connect
         self.username = username
         self.password = password
+        self.get_alarmes_request = 'SELECT a.COD_ALA, a.LIB_ALA, a.NIV_ALA, h.DAT_CREA_ALA FROM devdbsud.SU_ALA a, devdbsud.SU_ALA_HIS h WHERE a.cod_ala=h.cod_ala and h.etat_ala != \'TERM\' and instr(a.lst_ope,\';SYDEL;\')>0 order by dat_crea_ala'
+        # Thresholds. We don't have critical threshold since
+        # SU handled criticity.
+        self.warn = 1
 
-    def do_connect(self, method="sqlplus"):
+    def do_connect(self, method="cx_Oracle"):
         '''
         Initialize sqlplus connection to
         the oracle database.
@@ -37,17 +47,17 @@ class check_SydelUnivers:
     
         # Connection selection dictionnary
         # Only sqlplus for now.
-        connection = { 'sqlplus' : self.sqlplus_session() }
+        connection = { 'cx_Oracle' : self.cx_Oracle() }
         try:
             res = connection[method]
             return res
         except KeyError:
             sys.exit('Wrong connection method')
     
-    def sqlplus_session(self, OHOME=os.getenv('ORACLE_HOME')):
+    def cx_Oracle(self):
             c = self.username+'/'+self.password+'@'+self.connect
             try:
-                session = Popen([OHOME+'/bin/sqlplus', c], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+                session = cx_Oracle.connect(c)
                 print "Connection OK"
                 return session
             except (OSError, ValueError) as err:
@@ -56,26 +66,51 @@ class check_SydelUnivers:
     def get_alarmes(self, session):
         '''
         Get Sydel Univers alarmes relatives to user provided in argument
+        session : session object connected to the database.
         '''
-    
-        output_format = 'column LIB_ALA FORMAT A35\n'
-        get_alarmes = 'SELECT a.COD_ALA, a.LIB_ALA, a.NIV_ALA, h.DAT_CREA_ALA FROM devdbsud.SU_ALA a, devdbsud.SU_ALA_HIS h WHERE a.cod_ala=h.cod_ala and h.etat_ala != \'TERM\' and instr(a.lst_ope,\';SYDEL;\')>0 order by dat_crea_ala;'
-    
-        stdout, stderr = session.communicate(input=output_format + get_alarmes)
-        
-        lines = stdout.splitlines()
-    
-        # 14 is the number of meaningless lines.
-        nb_alarmes = len(lines)-14
-        alarmes = [ lines.pop(i) for i in range(12, len(lines)-2) ]
-    
-        return (alarmes, nb_alarmes)
-    
+
+        cursor = session.cursor()
+        cursor.execute(self.get_alarmes_request)
+
+        alarmes = cursor.fetchall()
+
+        return alarmes
+
+    def process_alarmes(self, alarmes):
+        '''
+        Search for critical alarmes, then format them for 
+        Shinken/nagios.
+        alarmes : list of tuples of alarmes.
+        '''
+
+        nb_alarmes = len(alarmes)
+        is_critical = False
+
+        exit_code = 0
+        output = "We got %d alarme(s)" % nb_alarmes
+        perfdata = "| Alarmes_SU=%d;%d;;;" % (nb_alarmes, self.warn)
+        long_output = ""
+
+        if nb_alarmes == 0:
+            return ("OK"+output+perfdata, exit_code)
+
+        for alarme in alarmes:
+            if alarme[2] == 1:
+                exit_code = 2
+                long_output += "CRITICAL: " + alarme[1] + " since " + str(alarme[3].date()) + " at " + str(alarme[3].time())
+            else:
+                exit_code = 1
+                long_output += "WARNING: " + alarme[1] + " since " + str(alarme[3].date()) + " at " + str(alarme[3].time())
+
+        return (output+perfdata+long_output, exit_code)
+
     def main(self):
         session = self.do_connect()
-        alarmes, nb_alarmes = self.get_alarmes(session)
-        print "We got %d alarmes" % nb_alarmes
+        alarmes = self.get_alarmes(session)
+        check_results = self.process_alarmes(alarmes)
 
+        print check_results[0]
+        exit(check_results[1])
 
 if __name__ == "__main__":
     parser = OptionParser()
