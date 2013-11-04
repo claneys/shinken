@@ -16,33 +16,24 @@
 # along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 """
-This program transforms a flat dependency file into a json one so it
-can be loaded in hot_dependencies_arbiter module
+This program get hosts informations from running arbiter daemon and 
+get service dependencies definition from config pack flat files then
+dump services dependencies according to the config files to a json
+that can be loaded in hot_dependencies_arbiter module.
 
-The input file format is:
-  host1 ":" vm1
-  host2 ":" vm2
-  ...
-
-Spaces around host- and vm-names will be stripped. Lines starting with
-a `#` will be ignored.
-
-You can now get a live update of your dependency tree in shinken for
-your xen/virtualbox/qemu. All you have to do is finding a way to
-modify this flat file when you do a live migration.
-
-For example, you can use a script like this in your crontab::
-
-  dsh -Mc -g mydom0group 'xm list' | \
-      awk "/vm-/ { print \$1 }"' > /tmp/shinken_flat_mapping
+servicedependencies file in pack use template host_name that will be
+matched in hosts 'use' directive to apply those servicedependency
+definition to hosts.
 
 """
 
 
-import os
-import sys
-import optparse
+import os, sys, optparse, cPickle
 import shinken.daemons.arbiterdaemon
+from shinken.arbiterlink import ArbiterLink
+from shinken.http_client import HTTPExceptions 
+from shinken.log import logger
+from shinken.objects.config import Config
 
 # Try to load json (2.5 and higer) or simplejson if failed (python2.4)
 try:
@@ -55,9 +46,6 @@ except ImportError:
         raise SystemExit("Error: you need the json or simplejson module "
                          "for this script")
 
-from shinken.arbiterlink import ArbiterLink
-from shinken.http_client import HTTPExceptions 
-from shinken.log import logger
 
 sat_types = ['arbiter', 'scheduler', 'poller', 'reactionner',
              'receiver', 'broker']
@@ -68,6 +56,7 @@ class ShinkenAdmin():
 
     def __init__(self):
         self.arb = None 
+        self.conf = None
 
     def do_connect(self):
         '''
@@ -91,30 +80,65 @@ class ShinkenAdmin():
             print "Connection OK"
         else:
             sys.exit("Connection to the arbiter get a problem")
-        return self.arb
     
-    def do_getconf(self, arb):
+    def getconf(self):
         '''
         Get the data in the arbiter for a table and some properties
         like hosts  host_name realm
         '''
+        files = ['/etc/shinken/packs/oracle-forms/servicedependency.cfg']
+        conf = Config()
+        conf.read_config_silent = 1
+        svcdep_buf = conf.read_config(files)
+        svc_dep = conf.read_config_buf(svcdep_buf)['servicedependency']
     
-        data = self.arb.get_objects_properties('hosts', ['host_name'])
-        print data
-        
-    #    if data != None:
-    #        for l in data:
-    #            print ' '.join(['%s' % i for i in l])
+        properties = [ 'host_name','use','act_depend_of']
+        hosts = self.arb.get_objects_properties('hosts', properties)
 
-    
+        return (hosts, svc_dep)
+
+    def load_host_mapping(self):
+        '''
+        Make tuples mapping service dependencies. Return a list of tuples 
+        and need hosts and service dependencies parameter.
+        '''
+        # Get needed conf
+        hosts, svc_dep = self.getconf()
+        print "Hosts:", hosts
+        print "Service Dep:", svc_dep
+
+        r = []
+        # Search for host matching "use" template
+        for dep in svc_dep:
+            # Get host_name and dependent_host_name field from servicedependency
+            # config file in packs. Usually values are host's pack template.
+            parent_host_name = dep['host_name']
+            try:
+                dependent_host_name = dep['dependent_host_name']
+            except KeyError:
+                dependent_host_name = parent_host_name
+
+            # Construct dependencies tuples
+            for host in hosts:
+                for parent_svc in dep['service_description']:
+                    parent_svc_tuples = [ ('service', host[0]+","+parent_svc) for host_name in parent_host_name if host_name in host[1] ]
+                for dependent_svc in dep['dependent_service_description']:
+                    dependent_svc_tuples = [ ('service', host[0]+","+dependent_svc) for host_name in dependent_host_name if host_name in host[1] ]
+                for tuple in parent_svc_tuples:
+                    r.append( (tuple, dependent_svc_tuples[parent_svc_tuples.index(tuple)]) )
+
+        return r
+
     def main(self, output_file):
-        self.arb = self.do_connect()
-        self.do_getconf(self.arb)
-    #    jsonmappingfile = open(output_file, 'w')
-    #    try:
-    #        json.dump(r, jsonmappingfile)
-    #    finally:
-    #        jsonmappingfile.close()
+        self.do_connect()
+        r = self.load_host_mapping()
+
+        # Write ouput file
+        jsonmappingfile = open(output_file, 'w')
+        try:
+            json.dump(r, jsonmappingfile)
+        finally:
+            jsonmappingfile.close()
 
 
 if __name__ == "__main__":
@@ -123,6 +147,7 @@ if __name__ == "__main__":
     parser.add_option("-o", "--output", dest='output_file',
                       default='/tmp/shinken_service_dependency:mapping.json',
                       help="Path of the generated json mapping file.")
+    parser.add_option('-v', '--verbose', action='store_true', dest='verbose', help='More verbosity. Used to debug')
 
     opts, args = parser.parse_args()
     if args:
