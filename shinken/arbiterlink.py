@@ -28,6 +28,7 @@ from shinken.satellitelink import SatelliteLink, SatelliteLinks
 from shinken.property import BoolProp, IntegerProp, StringProp, ListProp
 from shinken.http_client import HTTPExceptions
 from shinken.log import logger
+import cPickle, cStringIO, sys
 
 
 """ TODO: Add some comment about this class for the doc"""
@@ -124,10 +125,16 @@ class ArbiterLink(SatelliteLink):
         if self.con is None:
             self.create_connection()
         try:
-            print properties
-            r = self.con.get('get_objects_properties', {'table' : table, 'properties' : properties})
-            return r
+            properties = cPickle.dumps(properties)
+            res = self.con.get('get_objects_properties', {'table' : table, 'properties' : properties})
+            try:
+                r = cPickle.loads(str(res))
+                return r
+            except EOFError, exp:
+                print exp
+                return None
         except HTTPExceptions, exp:
+            print exp
             self.con = None
             return None
 

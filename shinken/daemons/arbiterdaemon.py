@@ -125,11 +125,11 @@ class IForArbiter(Interface):
                'broker': self.app.conf.brokers}
         return res
 
-
     # Try to give some properties of our objects
     def get_objects_properties(self, table, properties=[]):
+        properties = cPickle.loads(properties)
         logger.debug('ASK:: table= %s, properties= %s' % (str(table), str(properties)))
-        objs = getattr(self.conf, table, None)
+        objs = getattr(self.app.conf, table, None)
         logger.debug("OBJS:: %s" % str(objs))
         if not objs:
             return ''
@@ -140,7 +140,9 @@ class IForArbiter(Interface):
                 v = getattr(obj, prop, '')
                 l.append(v)
             res.append(l)
-        return "OKIIIII"
+        logger.debug('Resultat: %s' % str(res))
+        r = cPickle.dumps(res)
+        return r
 
 
 # Main Arbiter Class
