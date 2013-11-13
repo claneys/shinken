@@ -28,7 +28,7 @@ definition to hosts.
 """
 
 
-import os, sys, optparse, cPickle
+import os, sys, optparse, cPickle, shutil
 import shinken.daemons.arbiterdaemon
 from shinken.arbiterlink import ArbiterLink
 from shinken.http_client import HTTPExceptions 
@@ -50,15 +50,18 @@ except ImportError:
 sat_types = ['arbiter', 'scheduler', 'poller', 'reactionner',
              'receiver', 'broker']
 
-VERSION = '0.2'
+VERSION = '1.0'
 
 class ShinkenAdmin():
 
     def __init__(self):
         self.arb = None 
         self.conf = None
+        self.addr = 'localhost'
+        self.port = '7770'
+        self.arb_name = 'arbiter-master'
 
-    def do_connect(self):
+    def do_connect(self, verbose):
         '''
         Connect to an arbiter daemon
         Syntax: connect [host]:[port]
@@ -67,46 +70,44 @@ class ShinkenAdmin():
         Ex: connect to localhost, port 7770
         > connect
         '''
-        addr = 'localhost'
-        port = '7770'
     
-        print "Connection to %s:%s" % (addr, port)
+        if verbose:
+            print "Connection to %s:%s" % (self.addr, self.port)
         ArbiterLink.use_ssl = False
-        self.arb = ArbiterLink({'arbiter_name': 'arbiter-master', 'address': addr, 'port': port})
+        self.arb = ArbiterLink({'arbiter_name': self.arb_name, 'address': self.addr, 'port': self.port})
         self.arb.fill_default()
         self.arb.pythonize()
         self.arb.update_infos()
         if self.arb.reachable:
-            print "Connection OK"
+            if verbose:
+                print "Connection OK"
         else:
-            sys.exit("Connection to the arbiter get a problem")
+            sys.exit("Connection to the arbiter got a problem")
     
-    def getconf(self):
+    def getconf(self, config):
         '''
         Get the data in the arbiter for a table and some properties
         like hosts  host_name realm
         '''
-        files = ['/etc/shinken/packs/oracle-forms/servicedependency.cfg']
+        files = [config]
         conf = Config()
         conf.read_config_silent = 1
-        svcdep_buf = conf.read_config(files)
-        svc_dep = conf.read_config_buf(svcdep_buf)['servicedependency']
-    
+
+        # Get hosts objects
         properties = [ 'host_name','use','act_depend_of']
         hosts = self.arb.get_objects_properties('hosts', properties)
 
+        # Get services dependencies
+        svcdep_buf = conf.read_config(files)
+        svc_dep = conf.read_config_buf(svcdep_buf)['servicedependency']
+
         return (hosts, svc_dep)
 
-    def load_host_mapping(self):
+    def load_host_mapping(self, hosts, svc_dep):
         '''
         Make tuples mapping service dependencies. Return a list of tuples 
         and need hosts and service dependencies parameter.
         '''
-        # Get needed conf
-        hosts, svc_dep = self.getconf()
-        print "Hosts:", hosts
-        print "Service Dep:", svc_dep
-
         r = []
         # Search for host matching "use" template
         for dep in svc_dep:
@@ -126,14 +127,30 @@ class ShinkenAdmin():
                     dependent_svc_tuples = [ ('service', host[0]+","+dependent_svc) for host_name in dependent_host_name if host_name in host[1] ]
                 for tuple in parent_svc_tuples:
                     r.append( (tuple, dependent_svc_tuples[parent_svc_tuples.index(tuple)]) )
-
         return r
 
-    def main(self, output_file):
-        self.do_connect()
-        r = self.load_host_mapping()
+    def main(self, output_file, config, verbose):
+        self.do_connect(verbose)
+
+        # Get needed conf
+        hosts, svc_dep = self.getconf(config)
+        if verbose:
+            print "Hosts:", hosts
+            print "Service Dep:", svc_dep
+
+        # Make the map
+        r = self.load_host_mapping(hosts, svc_dep)
 
         # Write ouput file
+        try:
+            f = open(output_file + '.tmp', 'wb')
+            buf = json.dumps(r)
+            f.write(buf)
+            f.close()
+            shutil.move(output_file + '.tmp', output_file)
+            print "File %s wrote" % output_file
+        except IOError, exp:
+            sys.exit("Error writing the file %s: %s" % (output_file, exp))
         jsonmappingfile = open(output_file, 'w')
         try:
             json.dump(r, jsonmappingfile)
@@ -147,6 +164,7 @@ if __name__ == "__main__":
     parser.add_option("-o", "--output", dest='output_file',
                       default='/tmp/shinken_service_dependency:mapping.json',
                       help="Path of the generated json mapping file.")
+    parser.add_option('-c', '--config', dest='config', help='Shinken main config file.')
     parser.add_option('-v', '--verbose', action='store_true', dest='verbose', help='More verbosity. Used to debug')
 
     opts, args = parser.parse_args()
