@@ -146,7 +146,7 @@ class Hot_dependencies_arbiter(BaseModule):
             # Ok, still unfinished, look if in timeout
             now = time.time()
             if (now - self.last_cmd_launch) > self.mapping_command_timeout:
-                logger.debug("[Hot dependencies] The external command go in timeout!")
+                logger.debug("[Hot dependencies] The external command %s go in timeout!" % self.mapping_command)
         else:
             logger.info("The external command is done!")
             # it's finished! Cool
@@ -201,7 +201,6 @@ class Hot_dependencies_arbiter(BaseModule):
                         son.add_host_act_dependency(father, ['w', 'u', 'd'], None, True)
                 else:
                     logger.debug("[Hot dependencies] Missing one of %s %s" % (son_name, father_name))
-# TODO : Define service dependency part
             elif son_type == 'service' and father_type == 'service':
                 son = son_name.split(',')
                 father = father_name.split(',')
