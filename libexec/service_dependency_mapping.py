@@ -50,7 +50,7 @@ except ImportError:
 sat_types = ['arbiter', 'scheduler', 'poller', 'reactionner',
              'receiver', 'broker']
 
-VERSION = '1.0'
+VERSION = '0.2'
 
 class ShinkenAdmin():
 
@@ -61,7 +61,7 @@ class ShinkenAdmin():
         self.port = '7770'
         self.arb_name = 'arbiter-master'
 
-    def do_connect(self, verbose):
+    def do_connect(self, verbose=False):
         '''
         Connect to an arbiter daemon
         Syntax: connect [host]:[port]
@@ -79,8 +79,7 @@ class ShinkenAdmin():
         self.arb.pythonize()
         self.arb.update_infos()
         if self.arb.reachable:
-            if verbose:
-                print "Connection OK"
+            print "Connection OK"
         else:
             sys.exit("Connection to the arbiter got a problem")
     
@@ -103,7 +102,7 @@ class ShinkenAdmin():
 
         return (hosts, svc_dep)
 
-    def load_host_mapping(self, hosts, svc_dep):
+    def load_svc_mapping(self, hosts, svc_dep, verbose=False):
         '''
         Make tuples mapping service dependencies. Return a list of tuples 
         and need hosts and service dependencies parameter.
@@ -113,20 +112,60 @@ class ShinkenAdmin():
         for dep in svc_dep:
             # Get host_name and dependent_host_name field from servicedependency
             # config file in packs. Usually values are host's pack template.
-            parent_host_name = dep['host_name']
+            if ',' in dep['host_name'][0]:
+                parent_host_name = dep['host_name'][0].split(',')
+            else:
+                parent_host_name = dep['host_name']
+
             try:
-                dependent_host_name = dep['dependent_host_name']
+                if ',' in dep['dependent_host_name'][0]:
+                    dependent_host_name = dep['dependent_host_name'][0].split(',')
+                else:
+                    dependent_host_name = dep['dependent_host_name']
             except KeyError:
                 dependent_host_name = parent_host_name
+            if verbose:
+                print ""
+                print 'Service dependency host_name', parent_host_name
+                print 'Service dependency dependent_host_name', dependent_host_name
 
+            # Make list before process them by splitting comma separated values.
+            if ',' in dep['service_description'][0]:
+                dep['service_description'] = dep['service_description'][0].split(',')
+            if ',' in dep['dependent_service_description'][0]:
+                dep['dependent_service_description'] = dep['dependent_service_description'][0].split(',')
             # Construct dependencies tuples
-            for host in hosts:
-                for parent_svc in dep['service_description']:
-                    parent_svc_tuples = [ ('service', host[0]+","+parent_svc) for host_name in parent_host_name if host_name in host[1] ]
-                for dependent_svc in dep['dependent_service_description']:
-                    dependent_svc_tuples = [ ('service', host[0]+","+dependent_svc) for host_name in dependent_host_name if host_name in host[1] ]
-                for tuple in parent_svc_tuples:
-                    r.append( (tuple, dependent_svc_tuples[parent_svc_tuples.index(tuple)]) )
+            # Search in host all hosts that use template host_name
+            for parent_svc in dep['service_description']:
+                parent_svc_tuples = [[ ('service', host[0]+","+parent_svc) for host in hosts if host_name in host[1] ] for host_name in parent_host_name ]
+            for dependent_svc in dep['dependent_service_description']:
+                dependent_svc_tuples = [[ ('service', host[0]+","+dependent_svc) for host in hosts if host_name in host[1] ] for host_name in dependent_host_name ]
+
+            # Imbricated list containing tuples.
+            # First list for each host_name or dependent_host_name
+            # definitions in servicedependency.
+            # And second list for each host that use host_name as template.
+            # Must going dig deep !
+            if verbose:
+                print 'Parent service dependencies tuples list', parent_svc_tuples
+                print 'Dependent service dependencies tuples list', dependent_svc_tuples
+            for parent_tuples in parent_svc_tuples:
+                for parent_tuple in parent_tuples:
+                    parent_host = parent_tuple[1].split(',')[0]
+                    for dependent_tuples in dependent_svc_tuples:
+                        for dependent_tuple in dependent_tuples:
+                            dependent_host = next( host for host in hosts if host[0] == dependent_tuple[1].split(',')[0] )
+                            try:
+                                parent_host = dependent_host[2][0][0].host_name
+                                if parent_tuple[1].split(',')[0] == parent_host:
+                                    r.append( (parent_tuple, dependent_tuple) )
+                            except IndexError:
+                                if dependent_tuple[1].split(',')[0] == parent_tuple[1].split(',')[0]:
+                                    r.append( (parent_tuple, dependent_tuple) )
+
+        if verbose:
+            print ""
+            print "Result:", r
         return r
 
     def main(self, output_file, config, verbose):
@@ -139,7 +178,7 @@ class ShinkenAdmin():
             print "Service Dep:", svc_dep
 
         # Make the map
-        r = self.load_host_mapping(hosts, svc_dep)
+        r = self.load_svc_mapping(hosts, svc_dep, verbose)
 
         # Write ouput file
         try:
