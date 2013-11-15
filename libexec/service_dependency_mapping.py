@@ -78,10 +78,9 @@ class ShinkenAdmin():
         self.arb.fill_default()
         self.arb.pythonize()
         self.arb.update_infos()
-        if self.arb.reachable:
-            print "Connection OK"
-        else:
+        if not self.arb.reachable:
             sys.exit("Connection to the arbiter got a problem")
+        print "Connection OK"
     
     def getconf(self, config):
         '''
@@ -112,16 +111,9 @@ class ShinkenAdmin():
         for dep in svc_dep:
             # Get host_name and dependent_host_name field from servicedependency
             # config file in packs. Usually values are host's pack template.
-            if ',' in dep['host_name'][0]:
-                parent_host_name = dep['host_name'][0].split(',')
-            else:
-                parent_host_name = dep['host_name']
-
+            parent_host_name = self.split_and_merge(dep['host_name'])
             try:
-                if ',' in dep['dependent_host_name'][0]:
-                    dependent_host_name = dep['dependent_host_name'][0].split(',')
-                else:
-                    dependent_host_name = dep['dependent_host_name']
+                dependent_host_name = self.split_and_merge(dep['dependent_host_name'])
             except KeyError:
                 dependent_host_name = parent_host_name
             if verbose:
@@ -130,43 +122,95 @@ class ShinkenAdmin():
                 print 'Service dependency dependent_host_name', dependent_host_name
 
             # Make list before process them by splitting comma separated values.
-            if ',' in dep['service_description'][0]:
-                dep['service_description'] = dep['service_description'][0].split(',')
-            if ',' in dep['dependent_service_description'][0]:
-                dep['dependent_service_description'] = dep['dependent_service_description'][0].split(',')
+            dep['service_description'] = self.split_and_merge(dep['service_description'])
+            dep['dependent_service_description'] = self.split_and_merge(dep['dependent_service_description'])
             # Construct dependencies tuples
             # Search in host all hosts that use template host_name
+            parent_svc_tuples = []
+            dependent_svc_tuples = []
             for parent_svc in dep['service_description']:
-                parent_svc_tuples = [[ ('service', host[0]+","+parent_svc) for host in hosts if host_name in host[1] ] for host_name in parent_host_name ]
+                parent_svc_tuples += [[ ('service', host[0] + "," + parent_svc) for host in hosts if host_name in host[1] ] for host_name in parent_host_name ]
             for dependent_svc in dep['dependent_service_description']:
-                dependent_svc_tuples = [[ ('service', host[0]+","+dependent_svc) for host in hosts if host_name in host[1] ] for host_name in dependent_host_name ]
+                dependent_svc_tuples += [[ ('service', host[0] + "," + dependent_svc) for host in hosts if host_name in host[1] ] for host_name in dependent_host_name ]
 
-            # Imbricated list containing tuples.
-            # First list for each host_name or dependent_host_name
-            # definitions in servicedependency.
-            # And second list for each host that use host_name as template.
-            # Must going dig deep !
+            # No need to separate tuples by services here so we merge them
+            dependent_tuples = self.split_and_merge(dependent_svc_tuples, split=False)
+
             if verbose:
                 print 'Parent service dependencies tuples list', parent_svc_tuples
                 print 'Dependent service dependencies tuples list', dependent_svc_tuples
+
+            # Process !
             for parent_tuples in parent_svc_tuples:
-                for parent_tuple in parent_tuples:
-                    parent_host = parent_tuple[1].split(',')[0]
-                    for dependent_tuples in dependent_svc_tuples:
-                        for dependent_tuple in dependent_tuples:
-                            dependent_host = next( host for host in hosts if host[0] == dependent_tuple[1].split(',')[0] )
-                            try:
-                                parent_host = dependent_host[2][0][0].host_name
-                                if parent_tuple[1].split(',')[0] == parent_host:
-                                    r.append( (parent_tuple, dependent_tuple) )
-                            except IndexError:
-                                if dependent_tuple[1].split(',')[0] == parent_tuple[1].split(',')[0]:
-                                    r.append( (parent_tuple, dependent_tuple) )
+                r.append(self.make_all_dep_tuples(hosts, parent_tuples, dependent_tuples))
 
         if verbose:
             print ""
             print "Result:", r
         return r
+
+    def make_all_dep_tuples(self, hosts, parent_tuples=[()], dependent_tuples=[[()]] ):
+        '''
+        List imbrication : List_by_services : [ List_by_hosts : [ Service_dependency_tuples : ( ) ] ]
+        '''
+        res = []
+        for ptuple in parent_tuples:
+            parent = { 'host_name' : self.get_dependency_tuple_host_name(ptuple), 'svc_desc' : self.get_dependency_tuple_service_description(ptuple) }
+            # Dive into dependent services
+            for dtuple in dependent_tuples:
+                dependent = { 'host_name' : self.get_dependency_tuple_host_name(dtuple), 'svc_desc' : self.get_dependency_tuple_service_description(dtuple) }
+                dependent['host_object'] = next( host for host in hosts if host[0] == dependent['host_name'] )
+                res = self.make_dep_tuple(parent, dependent, ptuple, dtuple, res)
+
+        return res
+
+    def make_dep_tuple(self, parent, dependent, ptuple, dtuple, res):
+        '''
+        Search host dependency and make tuple according to it.
+        '''
+        try:
+            dependent_host_parent = self.get_host_dependency(dependent['host_object'])
+            if parent['host_name'] == dependent_host_parent:
+                res.append( (ptuple, dtuple) )
+        except IndexError:
+            if parent['host_name'] == dependent['host_name']:
+                res.append( (ptuple, dtuple) )
+
+        return res
+
+    def get_host_dependency(self, dependent_host):
+        '''
+        Get parent host_name attribute of host.
+        '''
+        return dependent_host[2][0][0].host_name
+
+    def get_dependency_tuple_host_name(self, tuple):
+        '''
+        Just get the host name part of a dependency tuple.
+        A dependency tuples is : ( 'service', 'host_name, service_description' )
+        '''
+        return tuple[1].split(',')[0]
+
+    def get_dependency_tuple_service_description(self, tuple):
+        '''
+        Just get the service description part of a dependency tuple.
+        A dependency tuples is : ( 'service', 'host_name, service_description' )
+        '''
+        return tuple[1].split(',')[1]
+
+
+    def split_and_merge(self, list, split=True):
+        '''
+        Split a list on comma separator and merge resulting lists
+        into an uniq list then return it
+        '''
+        res = []
+        for elt in list:
+            if split:
+                res += elt.split(',')
+            else:
+                res += elt
+        return res
 
     def main(self, output_file, config, verbose):
         self.do_connect(verbose)
