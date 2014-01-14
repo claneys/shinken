@@ -34,7 +34,7 @@ from shinken.basemodule import BaseModule
 from shinken.log import logger
 
 properties = {
-    'daemons': ['webui', 'skonf'],
+    'daemons': ['webui', 'skonf', 'synchronizer'],
     'type': 'cfg_password_webui'
     }
 
