@@ -69,6 +69,7 @@ export PATH="${PATH:+$PATH:}/usr/sbin:/bin:/sbin"
 export LANG=en_US.UTF8
 export LC_ALL=en_US.UTF8
 export PYTHONIOENCODING=utf8
+export PYTHONUNBUFFERED="0"
 
 # We try to find the LAST possible Python VERSION
 pythonver() {
@@ -283,11 +284,8 @@ do_start() {
         return 5
     }
     [ "$DEBUG" = 1 ] && DEBUGCMD="--debug "$(getdebugfile "$mod")
-    # Skonf need skonf.cfg, arbiter shinken.cfg, and the other OTHERd.ini
-    if [ "$mod" = 'skonf' ]; then
-	output=$("$modfilepath" -d -c "$SKONFCFG" $DEBUGCMD 2>&1)
-        rc=$?
-    elif [ "$mod" != "arbiter" ]; then
+    # Arbiter shinken.cfg, and the other OTHERd.ini
+    if [ "$mod" != "arbiter" ]; then
         modINI=$(echo "$"${mod}CFG | tr '[:lower:]' '[:upper:]')
         modinifile=$(eval echo ${modINI})
         output=$("$modfilepath" -d -c "${modinifile}" $DEBUGCMD 2>&1)
