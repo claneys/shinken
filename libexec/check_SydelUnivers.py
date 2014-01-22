@@ -12,7 +12,7 @@
 # This plugin check alarms triggered for a specific user and return them. There are no critical threshold since SU handle 
 # that state.
 
-import os, re
+import os, re, sys
 
 # You'll need to install this module : easy_install cx_Oracle
 # Prior to be able to install it, you must install python-devel package
@@ -27,16 +27,20 @@ WARNING = 1
 CRITICAL = 2
 UNKNOWN = 3
 
-
 VERSION = '0.9'
 
-class check_SydelUnivers:
+class check_SydelUnivers():
 
-    def __init__(self, connect, username, password, warning=1):
+    def __init__(self, connect, username, password, warning, su_username):
         self.connect = connect
         self.username = username
         self.password = password
-        self.get_alarms_request = 'SELECT a.COD_ALA, a.LIB_ALA, a.NIV_ALA, h.DAT_CREA_ALA FROM devdbsud.SU_ALA a, devdbsud.SU_ALA_HIS h WHERE a.cod_ala=h.cod_ala and h.etat_ala != \'TERM\' and instr(a.lst_ope,\';SYDEL;\')>0 order by dat_crea_ala'
+        self.su_username = su_username
+        self.get_alarms_request = 'SELECT a.COD_ALA, a.LIB_ALA, a.NIV_ALA, h.DAT_CREA_ALA FROM %s.SU_ALA a, %s.SU_ALA_HIS h WHERE a.cod_ala=h.cod_ala and h.etat_ala != \'TERM\' and instr(a.lst_ope,\';SYDEL;\')>0 order by dat_crea_ala' % (self.username, self.username)
+        self.tables = [ 'SU_ALA', 'SU_ALA_HIS' ]
+        # End with one of the self.tables value
+        self.is_synonyms_exist = 'SELECT COUNT(*) FROM all_objects WHERE object_type like \'SYNONYM\' and owner = \'%s\' and object_name = ' % self.username.upper()
+        self.create_synonyms = 'create synonym %s.SU_ALA for %s.' % (self.username, self.su_username)
         # Thresholds. We don't have critical threshold since
         # SU handled criticity.
         self.warn = warning
@@ -65,7 +69,6 @@ class check_SydelUnivers:
             c = self.username+'/'+self.password+'@'+self.connect
             try:
                 session = cx_Oracle.connect(c)
-                print "Connection OK"
                 return session
             except (OSError, ValueError) as err:
                 sys.exit("Connection got a problem : %s" % err.strerror)
@@ -77,11 +80,36 @@ class check_SydelUnivers:
         '''
 
         cursor = session.cursor()
-        cursor.execute(self.get_alarms_request)
+        try:
+            cursor.execute(self.get_alarms_request)
+        except cx_Oracle.DatabaseError as e:
+            if str(e).startswith('ORA-00942'):
+                print('%s\nMissing Synonym from Oracle username for your user: %s\nUse option -s.' % (e, self.username))
+                exit(1)
+            else:
+                print e
 
         alarms = cursor.fetchall()
 
         return alarms
+
+    def set_synonyms(self, session):
+        cursor = session.cursor()
+        for table in self.tables:
+            request_exist = self.is_synonyms_exist + "'%s'" % table
+            cursor.execute(request_exist)
+            if cursor.fetchone()[0] == 1:
+                print 'Synonyms for %s table already created.' % table
+            else:
+                request_create = self.create_synonyms + table
+                cursor.execute(request_create)
+                cursor.execute(request_exist)
+                if cursor.fetchone()[0] == 1:
+                    print 'Synonyms for %s table created.' % table
+                else:
+                    print 'Problem at creation...'
+                    exit(1)
+                                
 
     def process_alarms(self, alarms):
         '''
@@ -99,7 +127,7 @@ class check_SydelUnivers:
         long_output = ""
 
         if nb_alarms == 0:
-            return ("OK"+output+perfdata, exit_code)
+            return ("OK %s %s"% (output, perfdata), exit_code)
 
         for alarm in alarms:
             if alarm[2] == 1:
@@ -114,18 +142,22 @@ class check_SydelUnivers:
 
     def main(self):
         session = self.do_connect()
-        alarms = self.get_alarms(session)
-        check_results = self.process_alarms(alarms)
+        if self.su_username:
+            self.set_synonyms(session)
+        else:
+            alarms = self.get_alarms(session)
+            check_results = self.process_alarms(alarms)
 
-        print check_results[0]
-        exit(check_results[1])
+            print check_results[0]
+            exit(check_results[1])
 
 if __name__ == "__main__":
     parser = OptionParser()
     parser.add_option('-c', '--connect', dest='connect', help='Connect string to Sydel Univers Oracle Database. See your tnsnames.ora')
     parser.add_option('-u', '--username', dest='username', help='Oracle user to connect at database')
     parser.add_option('-p', '--password', dest='password', help='Oracle password')
-    parser.add_option('-w', '--warning', dest='warning', type=int, help='Warning threshold triggered if there are more than this threshold. Default: 1')
+    parser.add_option('-w', '--warning', dest='warning', type=int, default=1, help='Warning threshold triggered if there are more than this threshold. Default: 1')
+    parser.add_option('-s', '--su-username', dest='su_username', help='This will create the tables synonym for your user.\nEnter the SU username.')
 
     opts, args = parser.parse_args()
 
