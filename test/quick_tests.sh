@@ -49,6 +49,7 @@ launch_and_assert test_host_missing_adress.py
 launch_and_assert test_not_hostname.py
 launch_and_assert test_bad_contact_call.py
 launch_and_assert test_action.py
+launch_and_assert test_acknowledge.py
 launch_and_assert test_config.py
 launch_and_assert test_dependencies.py
 launch_and_assert test_problem_impact.py
@@ -117,6 +118,7 @@ launch_and_assert test_inheritance_and_plus.py
 launch_and_assert test_parse_perfdata.py
 launch_and_assert test_service_template_inheritance.py
 launch_and_assert test_dot_virg_in_command.py
+launch_and_assert test_downtimes.py
 launch_and_assert test_bad_escalation_on_groups.py
 launch_and_assert test_no_host_template.py
 launch_and_assert test_groups_with_no_alias.py
@@ -150,6 +152,9 @@ launch_and_assert test_business_correlator_expand_expression.py
 launch_and_assert test_business_correlator_output.py
 launch_and_assert test_business_correlator_notifications.py
 launch_and_assert test_bad_servicedependencies.py
+launch_and_assert test_missing_cariarereturn.py
+launch_and_assert test_definition_order.py
+launch_and_assert test_service_on_missing_template.py
 
 launch_and_assert test_maintenance_period.py
 # Live status is a bit longer than the previous, so we put it at the end.

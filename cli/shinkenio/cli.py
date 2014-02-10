@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2009-2012:
+# Copyright (C) 2009-2014:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
@@ -38,7 +38,6 @@ CONFIG = None
 
 
 
-
 ############# ********************        PUBLISH           ****************###########
 
 def read_package_json(fd):
@@ -67,7 +66,7 @@ def create_archive(to_pack):
     logger.debug("Preparing to pack the directory %s" % to_pack)
     package_json_p = os.path.join(to_pack, 'package.json')
     if not os.path.exists(package_json_p):
-        print "Error : Missing file", package_json_p
+        logger.error("Error : Missing file %s" % package_json_p)
         sys.exit(2)
     package_json = read_package_json(open(package_json_p))
 
@@ -136,7 +135,7 @@ def publish_archive(archive):
 
 
 def do_publish(to_pack='.'):
-    print "WILL CALL PUBLISH.py with", to_pack
+    logger.debug("WILL CALL PUBLISH.py with %s" % to_pack)
     archive = create_archive(to_pack)
     publish_archive(archive)
 
@@ -181,10 +180,21 @@ def search(look_at):
 
 def print_search_matches(matches):
     if len(matches) == 0:
-        print "Sorry, no match found in shinken.io"
+        logger.warning("No match founded in shinken.io")
         return
+    # We will sort and uniq results (maybe we got a all search
+    # so we will have both pack&modules, but some are both
+    ps = {}
+    names = [p['name'] for p in matches]
+    names = list(set(names))
+    names.sort()
+    
     for p in matches:
         name = p['name']
+        ps[name] = p
+    
+    for name in names:
+        p = ps[name]
         user_id = p['user_id']
         keywords = p['keywords']
         description = p['description']
@@ -195,11 +205,63 @@ def print_search_matches(matches):
 
 
 def do_search(*look_at):
-    print "CALL SEARCH WITH ARGS", look_at
-    matches = search(look_at)
-
-    #print "DEBUG: FOUNDED", matches
+    # test for  generic search 
+    if  look_at == ('all',):
+        matches = []
+        look_at = ('pack',)
+        matches += search(look_at)
+        look_at = ('module',)
+        matches += search(look_at)
+    else:
+        logger.debug("CALL SEARCH WITH ARGS %s" % str(look_at))
+        matches = search(look_at)
+    if matches == [] : print ('you are unlucky, use "shinken search all" for a complete list ')
     print_search_matches(matches)
+
+
+
+
+
+
+
+
+################" *********************** INVENTORY *************** ##################
+def inventor(look_at):
+    # Now really publish it
+    inventory = CONFIG['paths']['inventory']
+    logger.debug("dumping inventory %s" % inventory)
+    # get all sub-direcotries
+ 
+    for d in os.listdir(inventory):
+        if os.path.exists(os.path.join(inventory, d, 'package.json')):
+            if not look_at or d in look_at:
+                print d
+            # If asked, dump the content.package content
+            if look_at or d in look_at:
+                content_p = os.path.join(inventory, d, 'content.json')
+                if not os.path.exists(content_p):
+                    logger.error('Missing %s file' % content_p)
+                    continue
+                try:
+                    j = json.loads(open(content_p, 'r').read())
+                except Exception, exp:
+                    logger.error('Bad %s file "%s"' % (content_p, exp))
+                    continue
+                for d in j:
+                    s = ''
+                    if d['type'] == '5': # tar direcotry
+                        s += '(d)'
+                    else:
+                        s += '(f)'
+                    s += d['name']
+                    print s
+
+
+def do_inventory(*look_at):
+    inventor(look_at)
+
+
+
 
 
 
@@ -221,7 +283,8 @@ def _copytree(src, dst, symlinks=False, ignore=None):
 
 
 def grab_package(pname):
-    print "Trying to grab package", pname
+    cprint('Grabbing : ' , end='')
+    cprint('%s' %  pname, 'green')
 
     # Now really publish it
     proxy = CONFIG['shinken.io']['proxy']
@@ -247,7 +310,7 @@ def grab_package(pname):
         sys.exit(2)
     else:
         ret = response.getvalue()
-        print "GOT A RETURN OF", len(ret)
+        logger.debug("CURL result len : %d " % len(ret))
         return ret
 
 
@@ -262,7 +325,7 @@ def grab_local(d):
 
     package_json_p = os.path.join(to_pack, 'package.json')
     if not os.path.exists(package_json_p):
-        print "Error : Missing file", package_json_p
+        logger.error("Error : Missing file %s" % package_json_p)
         sys.exit(2)
     package_json = read_package_json(open(package_json_p))
 
@@ -297,55 +360,59 @@ def grab_local(d):
 
 
 def install_package(pname, raw):
-    print "We must install the package", pname, "of size", len(raw)
+    logger.debug("Installing the package %s (size:%d)" % (pname, len(raw)))
     tmpdir = os.path.join(tempfile.gettempdir(), pname)
-    print "WIll unpack the package into", tmpdir
+    logger.debug("Unpacking the package into %s" % tmpdir)
 
     if os.path.exists(tmpdir):
-        print "removing previous tmp dir"
+        logger.debug("Removing previous tmp dir %s" % tmpdir)
         shutil.rmtree(tmpdir)
-    print "Creating temporary dir", tmpdir
+    logger.debug("Creating temporary dir %s" % tmpdir)
     os.mkdir(tmpdir)
+
+    package_content = []
 
     # open a file with the content
     f = StringIO(raw)
     tar_file = tarfile.open(fileobj=f, mode="r")
-    print "tar file contents:"
+    logger.debug("Tar file contents:")
     for i in tar_file.getmembers():
         path = i.name
         if path == '.':
             continue
-        if not path.startswith('./') or '..' in path:
-            print "SECURITY: the path %s seems dangerous!" % path
+        if path.startswith('/') or '..' in path:
+            logger.error("SECURITY: the path %s seems dangerous!" % path)
             return
-        print "PATH:%s" % path
+        # Adding all files into the package_content list
+        package_content.append( {'name':i.name, 'mode':i.mode, 'type':i.type, 'size':i.size} )
+        logger.debug("\t%s" % path)
     # Extract all in the tmpdir
     tar_file.extractall(tmpdir)
     tar_file.close()
 
-
+    # Now we look at the package.json that will give us our name and co
     package_json_p = os.path.join(tmpdir, 'package.json')
     if not os.path.exists(package_json_p):
-        print "Error : bad archive : Missing file", package_json_p
+        logger.error("Error : bad archive : Missing file %s" % package_json_p)
         return None
     package_json = read_package_json(open(package_json_p))
-    print "WILL Install package with", package_json
+    logger.debug("Package.json content %s " % package_json)
 
     modules_dir = CONFIG['paths']['modules']
     share_dir   = CONFIG['paths']['share']
     packs_dir   = CONFIG['paths']['packs']
     etc_dir     = CONFIG['paths']['etc']
+    doc_dir     = CONFIG['paths']['doc']
+    inventory_dir     = CONFIG['paths']['inventory']
     test_dir   = CONFIG['paths'].get('test', '/__DONOTEXISTS__')
-    for d in (modules_dir, share_dir, packs_dir):
+    for d in (modules_dir, share_dir, packs_dir, doc_dir, inventory_dir):
         if not os.path.exists(d):
             logger.error("The installation directory %s is missing!" % d)
             return
 
     p_share  = os.path.join(tmpdir, 'share')
 
-    print "TMPDIR", tmpdir
-    print "MODULES DIR", modules_dir
-    print "PNAME", pname
+    logger.debug("TMPDIR:%s modules_dir:%s pname:%s" %(tmpdir, modules_dir, pname))
     # Now install the package from $TMP$/module/* to $MODULES$/pname/*
     p_module = os.path.join(tmpdir, 'module')
     if os.path.exists(p_module):
@@ -358,6 +425,22 @@ def install_package(pname, raw):
         # shutil will do the create dir
         shutil.copytree(p_module, mod_dest)
         logger.info("Copy done in the module directory %s" % mod_dest)
+
+
+    p_doc  = os.path.join(tmpdir, 'doc')
+    logger.debug("TMPDIR:%s doc_dir:%s pname:%s" %(tmpdir, doc_dir, pname))
+    # Now install the package from $TMP$/doc/* to $MODULES$/doc/source/89_packages/pname/*
+    if os.path.exists(p_doc):
+        logger.info("Installing the doc package data")
+        doc_dest = os.path.join(doc_dir, 'source', '89_packages', pname)
+        if os.path.exists(doc_dest):
+            logger.info("Removing previous doc install at %s" % doc_dest)
+
+            shutil.rmtree(doc_dest)
+        # shutil will do the create dir
+        shutil.copytree(p_doc, doc_dest)
+        logger.info("Copy done in the doc directory %s" % doc_dest)
+
 
     # Now install the pack from $TMP$/pack/* to $PACKS$/pname/*
     p_pack = os.path.join(tmpdir, 'pack')
@@ -388,9 +471,23 @@ def install_package(pname, raw):
         logger.info("Merging the test package data into your test directory")
         # We don't use shutils because it NEED etc_dir to be non existant...
         # Come one guys..... cp is not as terrible as this...
-        print "COPY", p_tests, test_dir
+        logger.debug("COPYING %s into %s" % (p_tests, test_dir))
         _copytree(p_tests, test_dir)
         logger.info("Copy done in the test directory %s" % test_dir)
+
+    # then samve the package.json into the inventory dir
+    p_inv = os.path.join(inventory_dir, pname)
+    if not os.path.exists(p_inv):
+        os.mkdir(p_inv)
+    shutil.copy2(package_json_p, os.path.join(p_inv, 'package.json'))
+    # and the package content
+    cont = open(os.path.join(p_inv, 'content.json'), 'w')
+    cont.write(json.dumps(package_content))
+    cont.close()
+    
+    # THE END, output all is OK :D
+    cprint('OK ', 'green', end='')
+    cprint('%s' % pname)
 
 
 
@@ -429,5 +526,7 @@ exports = {
             ],
         'description' : 'Grab and install a package from shinken.io'
         },
-
+    do_inventory  : {'keywords': ['inventory'], 'args': [],
+       'description': 'List locally installed packages'
+       },
     }
