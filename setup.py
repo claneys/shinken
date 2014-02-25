@@ -268,9 +268,12 @@ class build_config(Command):
         # Open a /etc/*d.ini file and change the ../var occurence with a
         # good value from the configuration file
 
+        if not os.path.exists(os.path.join(self.build_dir, 'daemons')):
+            os.makedirs(os.path.join(self.build_dir, 'daemons'))
         for (dname, name) in daemon_ini_files:
             inname = os.path.join('etc', name)
-            outname = os.path.join(self.build_dir, dname)
+            #outname = os.path.join(self.build_dir, '%sd.ini' % dname)
+            outname = os.path.join(self.build_dir, name)
             log.info('Updating path in %s->%s: to "%s"' % (inname, outname, self.var_path))
 
             # but we have to force the user/group & workdir values still:
@@ -477,6 +480,7 @@ if 'win' in sys.platform:
                      'run':      "c:\\shinken\\var",
                      'libexec':  "c:\\shinken\\libexec",
                      }
+    data_files = []
 elif 'linux' in sys.platform or 'sunos5' in sys.platform:
     default_paths = {'var': "/var/lib/shinken/",
                      'etc': "/etc/shinken",
@@ -484,6 +488,19 @@ elif 'linux' in sys.platform or 'sunos5' in sys.platform:
                      'log': "/var/log/shinken",
                      'libexec': "/usr/lib/shinken/plugins",
                      }
+    data_files = [
+        (
+            os.path.join('/etc', 'init.d'),
+            ['bin/init.d/shinken',
+             'bin/init.d/shinken-arbiter',
+             'bin/init.d/shinken-broker',
+             'bin/init.d/shinken-receiver',
+             'bin/init.d/shinken-poller',
+             'bin/init.d/shinken-reactionner',
+             'bin/init.d/shinken-scheduler',
+             ]
+            )
+        ]
 elif 'bsd' in sys.platform or 'dragonfly' in sys.platform:
     default_paths = {'var': "/usr/local/var/shinken",
                      'etc': "/usr/local/etc/shinken",
@@ -491,13 +508,15 @@ elif 'bsd' in sys.platform or 'dragonfly' in sys.platform:
                      'log': "/var/log/shinken",
                      'libexec': "/usr/local/libexec/shinken",
                      }
+    data_files = []
 else:
     raise "Unsupported platform, sorry"
+    data_files = []
 
 required_pkgs = ['pycurl']
 
-etc_root = os.path.dirname(default_paths['etc'])
-var_root = os.path.dirname(default_paths['var'])
+etc_root = default_paths['etc']
+var_root = default_paths['var']
 
 # nagios/shinken global config
 main_config_files = ('shinken.cfg',)
@@ -562,31 +581,7 @@ daemon_ini_files = (('broker', 'daemons/brokerd.ini'),
 
 resource_cfg_files = ()
 
-# Ok, for the webui files it's a bit tricky. we need to add all of them in
-#the package_data of setup(), but from a point of view of the
-# module shinken, so the directory shinken... but without movingfrom pwd!
-# so: sorry for the replace, really... I HATE SETUP()!
-full_path_webui_files = gen_data_files('shinken/webui')
-webui_files = [s.replace('shinken/webui/', 'webui/') for s in full_path_webui_files]
-
 package_data = ['*.py', 'modules/*.py', 'modules/*/*.py']
-package_data.extend(webui_files)
-
-#By default we add all init.d scripts and some dummy files
-data_files = [
-    (
-        os.path.join('/etc', 'init.d'),
-        ['bin/init.d/shinken',
-         'bin/init.d/shinken-arbiter',
-         'bin/init.d/shinken-broker',
-         'bin/init.d/shinken-receiver',
-         'bin/init.d/shinken-poller',
-         'bin/init.d/shinken-reactionner',
-         'bin/init.d/shinken-scheduler',
-         ]
-        )
-    ]
-
 
 # If not update, we install configuration files too
 if not is_update:
@@ -628,7 +623,6 @@ for p in gen_data_files('libexec'):
     data_files.append( (os.path.join(var_root, _path), [p]))
 
 
-
 # compute scripts
 scripts = [ s for s in glob('bin/shinken*') if not s.endswith('.py')]
 
@@ -642,7 +636,7 @@ if __name__ == "__main__":
         },
 
         name="Shinken",
-        version="2.0-RC2",
+        version="2.0-RC7",
         packages=find_packages(),
         package_data={'': package_data},
         description="Shinken is a monitoring tool compatible with Nagios configuration and plugins",
